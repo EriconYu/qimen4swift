@@ -31,6 +31,8 @@ final class QimenTests: XCTestCase {
             "year": 2026, "month": 4, "day": 11, "hour": 0, "minute": 30,
             "timezone": "Asia/Shanghai",
         ])
-        XCTAssertEqual(String(describing: first["siZhu"]!), String(describing: second["siZhu"]!))
+        let firstPillars = first["siZhu"] as! [String: String]
+        let secondPillars = second["siZhu"] as! [String: String]
+        XCTAssertEqual(firstPillars, secondPillars)
     }
 }

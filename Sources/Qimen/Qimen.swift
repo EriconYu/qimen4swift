@@ -1,47 +1,31 @@
 import Foundation
+import LunarSwift
 
-public enum QimenError: Error {
-    case engineMissing
-    case execution(String)
-    case invalidOutput
-}
+public enum QimenError: Error { case invalidInput(String) }
+private let gan = ["甲","乙","丙","丁","戊","己","庚","辛","壬","癸"], zhi = ["子","丑","寅","卯","辰","巳","午","未","申","酉","戌","亥"]
+private let terms = ["小寒","大寒","立春","雨水","惊蛰","春分","清明","谷雨","立夏","小满","芒种","夏至","小暑","大暑","立秋","处暑","白露","秋分","寒露","霜降","立冬","小雪","大雪","冬至"]
+private let names = ["坎","坤","震","巽","中","乾","兑","艮","离"], directions = ["正北","西南","正东","东南","中央","西北","正西","东北","正南"], elements = ["水","土","木","木","土","金","金","土","火"]
+private let earthOrder = ["戊","己","庚","辛","壬","癸","丁","丙","乙"], circle = [3,8,1,6,5,0,7,2], stars = ["天蓬星","天芮星","天冲星","天辅星","天禽星","天心星","天柱星","天任星","天英星"], doors = ["休门","死门","伤门","杜门","","开门","惊门","生门","景门"], deities = ["值符","螣蛇","太阴","六合","白虎","玄武","九地","九天"]
+private let ganElement = ["甲":"木","乙":"木","丙":"火","丁":"火","戊":"土","己":"土","庚":"金","辛":"金","壬":"水","癸":"水"], branchPalace = ["子":0,"丑":7,"寅":7,"卯":2,"辰":3,"巳":3,"午":8,"未":1,"申":1,"酉":6,"戌":5,"亥":5]
+private let yima = ["申":"寅","子":"寅","辰":"寅","寅":"申","午":"申","戌":"申","亥":"巳","卯":"巳","未":"巳","巳":"亥","酉":"亥","丑":"亥"], rumu = ["甲":"未","乙":"未","丙":"戌","丁":"戌","戊":"戌","庚":"丑","辛":"丑","壬":"辰","癸":"辰"]
+private let doorElement = ["休门":"水","死门":"土","伤门":"木","杜门":"木","开门":"金","惊门":"金","生门":"土","景门":"火"]
+private let formations = ["乙+丙":"奇仪相佐","乙+丁":"奇仪相佐","丙+丁":"星月相会","丙+戊":"飞鸟跌穴","丁+戊":"青龙返首","乙+戊":"日出扶桑","丙+己":"天遁","丁+壬":"地遁","丁+己":"人遁","丙+壬":"神遁","乙+癸":"鬼遁","庚+乙":"太白入荧","庚+丙":"太白入荧","庚+丁":"太白入荧","辛+乙":"白虎猖狂","乙+辛":"龙逃走","癸+丁":"腾蛇夭矫","癸+丙":"蛇矫入火","庚+戊":"值符飞宫","庚+壬":"上格","庚+癸":"大格","丁+癸":"玉女守门","戊+壬":"小格","戊+癸":"刑格","己+庚":"刑格入狱","辛+壬":"凶蛇入刑"]
+private var jiazi: [String] { (0..<60).map { gan[$0 % 10] + zhi[$0 % 12] } }
+private func mod(_ n:Int,_ d:Int)->Int { (n % d + d) % d }
+private func rotate<T>(_ a:[T],_ n:Int)->[T] { let x=mod(n,a.count); return Array(a[x...]) + Array(a[..<x]) }
+private func season(_ b:String)->String { if "寅卯".contains(b){return "春"};if "巳午".contains(b){return "夏"};if "辰戌丑未".contains(b){return "四季土"};if "申酉".contains(b){return "秋"};return "冬" }
+private func states(_ s:String)->[String:String] { if s=="春"{return ["木":"旺","火":"相","水":"休","金":"囚","土":"死"]};if s=="夏"{return ["火":"旺","土":"相","木":"休","水":"囚","金":"死"]};if s=="四季土"{return ["土":"旺","金":"相","火":"休","木":"囚","水":"死"]};if s=="秋"{return ["金":"旺","水":"相","土":"休","火":"囚","木":"死"]};return ["水":"旺","木":"相","金":"休","土":"囚","火":"死"] }
+private func char(_ s:String,_ i:Int)->String { String(s[s.index(s.startIndex,offsetBy:i)]) }
+private func kong(_ pillar:String)->[String:Any] { let start=jiazi.firstIndex(of:pillar)! / 10 * 10, used=Set((start..<start+10).map{char(jiazi[$0],1)}), branches=zhi.filter{!used.contains($0)};return ["branches":branches,"palaces":branches.map{branchPalace[$0]!+1}] }
+private func inputInt(_ input:[String:Any],_ key:String,_ optional:Bool=false)throws->Int { if input[key] == nil && optional{return 0};guard let value=input[key] as? Int else{throw QimenError.invalidInput("\(key) 必须是整数")};return value }
+private func date(_ solar:Solar)->Date { var calendar=Calendar(identifier:.gregorian);calendar.timeZone=TimeZone(secondsFromGMT:0)!;return calendar.date(from:DateComponents(year:solar.year,month:solar.month,day:solar.day,hour:solar.hour,minute:solar.minute,second:solar.second))! }
 
-private func runQimen(_ input: [String: Any]) throws -> [String: Any] {
-    guard let url = Bundle.module.url(forResource: "engine", withExtension: "cjs") else {
-        throw QimenError.engineMissing
-    }
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-    process.arguments = ["node", url.path]
-    let stdin = Pipe()
-    let stdout = Pipe()
-    process.standardInput = stdin
-    process.standardOutput = stdout
-    process.standardError = Pipe()
-    try process.run()
-    stdin.fileHandleForWriting.write(try JSONSerialization.data(withJSONObject: input))
-    stdin.fileHandleForWriting.closeFile()
-    process.waitUntilExit()
-    let output = stdout.fileHandleForReading.readDataToEndOfFile()
-    guard let envelope = try JSONSerialization.jsonObject(with: output) as? [String: Any] else {
-        throw QimenError.invalidOutput
-    }
-    if process.terminationStatus != 0 || (envelope["ok"] as? Bool) != true {
-        throw QimenError.execution(envelope["error"] as? String ?? "engine failed")
-    }
-    return envelope
+public func calculateQimen(_ input:[String:Any]) throws -> [String:Any] {
+  let y=try inputInt(input,"year"),m=try inputInt(input,"month"),d=try inputInt(input,"day"),h=try inputInt(input,"hour"),minute=try inputInt(input,"minute",true);guard (1900...2100).contains(y),(0...23).contains(h),(0...59).contains(minute) else{throw QimenError.invalidInput("日期无效")};var cal=Calendar(identifier:.gregorian);cal.timeZone=TimeZone(secondsFromGMT:0)!;guard let original=cal.date(from:DateComponents(year:y,month:m,day:d,hour:h,minute:minute)),cal.component(.year,from:original)==y,cal.component(.month,from:original)==m,cal.component(.day,from:original)==d else{throw QimenError.invalidInput("日期无效")};let juMethod=(input["juMethod"] as? String) ?? "chaibu";guard ["chaibu","maoshan"].contains(juMethod) else{throw QimenError.invalidInput("juMethod 无效")};if let p=input["panType"] as? String,p != "zhuan"{throw QimenError.invalidInput("目前仅支持转盘奇门")}
+  let effective=h==23 ? cal.date(byAdding:.hour,value:1,to:original)! : original, c=cal.dateComponents([.year,.month,.day,.hour,.minute],from:effective), lunar=Solar(year:c.year!,month:c.month!,day:c.day!,hour:c.hour!,minute:c.minute!).lunar, originalLunar=Solar(year:y,month:m,day:d,hour:h,minute:minute).lunar;let pillars=[lunar.yearInGanZhiExact,lunar.monthInGanZhiExact,lunar.dayInGanZhiExact,lunar.timeInGanZhi],term=lunar.getPrevJieQi(wholeDay:false)!,next=lunar.getNextJieQi(wholeDay:false)!;let rotateIndex=mod(terms.firstIndex(of:term.name)!-5,24);var element=(jiazi.firstIndex(of:pillars[2])! / 5) % 3;if juMethod=="maoshan"{let delta=effective.timeIntervalSince(date(term.solar));element=min(2,max(0,Int(delta/432000)))};let ri=Int(Double(rotateIndex)/3+2)%8,direction=ri<4 ? 1 : -1;var round=mod([1,8,3,4,9,2,7,6][ri]+direction*(rotateIndex%3)+direction*6*element+17,9);round=(round+1)*direction
+  var earth=Array(repeating:"",count:9),order=Array(0..<9),start=round-1;if round<0{start += 1;order.reverse()};for (p,s) in zip(rotate(order,start),earthOrder){earth[p]=s};let hourIndex=jiazi.firstIndex(of:pillars[3])!,conceal=earthOrder[hourIndex/10],concealPalace=earth.firstIndex(of:conceal)!,middle=(input["zhiFuJiGong"] as? String)=="ji_wugong" ? 1 : (round>0 ? 7:1),symbolIndex=concealPalace,mandate=concealPalace==4 ? middle:concealPalace,hourOrigin=char(pillars[3],0)=="甲" ? conceal:char(pillars[3],0),offset=mod(circle.firstIndex(of:concealPalace)!-circle.firstIndex(of:earth.firstIndex(of:hourOrigin)!)!,8);var starBoard=Array(repeating:"",count:9),heaven=Array(repeating:"",count:9);for (p,o) in zip(circle,rotate(circle,offset)){starBoard[p]=stars[o];heaven[p]=earth[o]}
+  let branch=zhi.firstIndex(of:char(pillars[3],1))!,lead=zhi.firstIndex(of:char(jiazi[hourIndex/10*10],1))!,timeOffset=mod(branch-lead,12);var doorTarget=mod(concealPalace+timeOffset*direction,9);if doorTarget==4{doorTarget=middle};let doorOffset=circle.firstIndex(of:mandate)!-circle.firstIndex(of:doorTarget)!;var doorBoard=Array(repeating:"",count:9);for (p,o) in zip(circle,rotate(circle,doorOffset)){doorBoard[p]=doors[o]};let symbolName=stars[symbolIndex],symbolPalace=starBoard.firstIndex(of:symbolName)!;var deityOrder=deities;if round<0{deityOrder.reverse()};let deityOffset=mod(circle.firstIndex(of:symbolPalace)!-deityOrder.firstIndex(of:"值符")!,8);var deityBoard=Array(repeating:"",count:9);for (p,name) in zip(circle,rotate(deityOrder,-deityOffset)){deityBoard[p]=name}
+  let currentSeason=season(char(pillars[1],1)),state=states(currentSeason),dayKong=kong(pillars[2]),hourKong=kong(pillars[3]),horse=yima[char(pillars[2],1)]!,horsePalace=branchPalace[horse]!,opposites=[0:8,8:0,1:7,7:1,2:6,6:2,3:5,5:3];var palaces=[[String:Any]](),global=[String]();for i in 0..<9{var fs=[String]();if i != 4,let f=formations[heaven[i]+"+"+earth[i]]{fs.append(f)};let si=stars.firstIndex(of:starBoard[i]) ?? -1;if si==i{fs.append("伏吟")};if opposites[si]==i{fs.append("反吟")};global.append(contentsOf:fs.map{"\(names[i])宫: \($0)"});let mu=rumu[heaven[i]].flatMap{branchPalace[$0]} ?? -1;palaces.append(["palaceIndex":i+1,"palaceName":names[i],"direction":directions[i],"element":elements[i],"earthStem":earth[i],"earthStemElement":ganElement[earth[i]] ?? "","heavenStem":heaven[i],"heavenStemElement":ganElement[heaven[i]] ?? "","star":starBoard[i],"starElement":si<0 ? "":elements[si],"gate":doorBoard[i],"gateElement":doorElement[doorBoard[i]] ?? "","deity":deityBoard[i],"formations":fs,"stemWangShuai":state[ganElement[heaven[i]] ?? ""] ?? "","elementState":state[elements[i]]!,"isKongWang":((dayKong["palaces"] as! [Int]).contains(i+1)||(hourKong["palaces"] as! [Int]).contains(i+1)),"isYiMa":i==horsePalace,"isRuMu":i==mu])}
+  var result:[String:Any]=["algorithmVersion":"qimen-zhuanpan-chaibu-v1","dateInfo":["solarDate":String(format:"%04d-%02d-%02d",y,m,d),"lunarDate":"\(originalLunar.yearInChinese)年\(originalLunar.monthInChinese)月\(originalLunar.dayInChinese)","solarTerm":term.name,"solarTermRange":"\(String(term.solar.ymdhms.prefix(16))) ~ \(String(next.solar.ymdhms.prefix(16)))"],"siZhu":["year":pillars[0],"month":pillars[1],"day":pillars[2],"hour":pillars[3]],"dunType":round>0 ? "yang":"yin","juNumber":abs(round),"yuan":["上元","中元","下元"][element],"xunShou":"甲\(char(jiazi[hourIndex/10*10],1))","zhiFu":["star":symbolName,"palace":symbolPalace+1],"zhiShi":["gate":doors[mandate],"palace":doorBoard.firstIndex(of:doors[mandate])!+1],"palaces":palaces,"kongWang":["dayKong":dayKong,"hourKong":hourKong],"yiMa":["branch":horse,"palace":horsePalace+1],"globalFormations":global,"panType":"转盘","juMethod":juMethod=="maoshan" ? "茅山法":"拆补法","monthPhase":Dictionary(uniqueKeysWithValues:gan.map{($0,state[ganElement[$0]!]!)})];if let q=input["question"]{result["question"]=q};return result
 }
-
-public func calculateQimen(_ input: [String: Any]) throws -> [String: Any] {
-    guard let data = try runQimen(input)["data"] as? [String: Any] else {
-        throw QimenError.invalidOutput
-    }
-    return data
-}
-
-public func canonicalQimen(_ input: [String: Any]) throws -> [String: Any] {
-    guard let canonical = try runQimen(input)["canonical"] as? [String: Any] else {
-        throw QimenError.invalidOutput
-    }
-    return canonical
-}
+public func canonicalQimen(_ input:[String:Any]) throws -> [String:Any] { let r=try calculateQimen(input),s=r["siZhu"] as! [String:String],zf=r["zhiFu"] as! [String:Any],zs=r["zhiShi"] as! [String:Any];var basic:[String:Any]=["四柱":"\(s["year"]!) \(s["month"]!) \(s["day"]!) \(s["hour"]!)","节气":((r["dateInfo"] as! [String:Any])["solarTerm"]!),"局式":"\(r["dunType"] as! String == "yang" ? "阳遁":"阴遁")\(r["juNumber"]!)局","三元":r["yuan"]!,"旬首":r["xunShou"]!,"值符":zf["star"]!,"值使":zs["gate"]!];if let q=r["question"]{basic["占问"]=q};let kw=r["kongWang"] as! [String:Any];var board=[[String:Any]]();for p in r["palaces"] as! [[String:Any]]{let i=p["palaceIndex"] as! Int;var status=[String]();if (((kw["dayKong"] as! [String:Any])["palaces"] as! [Int]).contains(i)){status.append("日空")};if (((kw["hourKong"] as! [String:Any])["palaces"] as! [Int]).contains(i)){status.append("时空")};if p["isYiMa"] as! Bool{status.append("驿马")};if p["isRuMu"] as! Bool{status.append("入墓")};if i==5{status=["寄宫参看对应宫位"]};func dash(_ key:String)->Any{let v=p[key] as! String;return v.isEmpty ? "-":v};var item:[String:Any]=["宫名":p["palaceName"]!,"宫位序号":i,"宫位":"\(p["palaceName"]!)\(i)","宫位五行":p["element"]!,"八神":dash("deity"),"九星":dash("star"),"八门":dash("gate"),"天盘天干":dash("heavenStem"),"地盘天干":dash("earthStem"),"宫位状态":status];if !(p["starElement"] as! String).isEmpty{item["九星五行"]=p["starElement"]};if !(p["gateElement"] as! String).isEmpty{item["八门五行"]=p["gateElement"]};board.append(item)};return ["基本信息":basic,"九宫盘":board] }

@@ -1,6 +1,6 @@
 # qimen4swift
 
-Swift 奇门遁甲排盘 SDK，SwiftPM 资源内置经过版本锁定的排盘引擎。要求 Swift 5.5+ 和 Node.js 20+。
+Swift 原生奇门遁甲排盘 SDK，历法使用 `LunarSwift`。要求 Swift 5.5+，运行时不依赖 Node.js 或其他语言。
 
 ```swift
 let input: [String: Any] = [
